@@ -27,22 +27,14 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Ensure APK path exists
-        run: |
-          if [ ! -f app/build/outputs/apk/debug/app-debug.apk ]; then
-            echo "APK not found, build may have failed."
-            exit 1
-          fi
+      - name: List APK directory contents
+        run: ls -la app/build/outputs/apk/debug
 
       - name: Generate SHA-1 checksum
         run: sha1sum app/build/outputs/apk/debug/app-debug.apk > checksum.sha1
 
-      - name: Ensure checksum file exists
-        run: |
-          if [ ! -f checksum.sha1 ]; then
-            echo "Checksum file not found, generation may have failed."
-            exit 1
-          fi
+      - name: List project root directory contents
+        run: ls -la
 
       - name: Upload APK and checksum
         uses: actions/upload-artifact@v1
@@ -51,3 +43,46 @@ jobs:
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             checksum.sha1
+
+  release:
+    name: Release APK
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK and checksum from build
+        uses: actions/download-artifact@v1
+        with:
+          name: apk
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.run_number }}
+          release_name: ${{ github.event.repository.name }} v${{ github.run_number }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release APK
+        id: upload_release_asset
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: apk/app-debug.apk
+          asset_name: ${{ github.event.repository.name }}.apk
+          asset_content_type: application/zip
+
+      - name: Upload Checksum
+        id: upload_checksum
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: apk/checksum.sha1
+          asset_name: checksum.sha1
+          asset_content_type: text/plain
